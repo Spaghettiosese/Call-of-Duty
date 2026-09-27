@@ -64,7 +64,7 @@ const HUD = {
   hint(html, dur = 5) { const h = this.el.hint; if (!html) { h.hidden = true; return; } h.innerHTML = html; h.hidden = false; this.hintT = dur; },
   interact(text, prog = 0) {
     const e = this.el.inter; if (!text) { e.hidden = true; return; }
-    e.hidden = false; e.querySelector('span').textContent = text; e.querySelector('.prog').style.width = (prog * 100) + '%';
+    e.hidden = false; e.querySelector('span').textContent = text.charAt(0).toUpperCase() + text.slice(1); e.querySelector('.prog').style.width = (prog * 100) + '%';
   },
   counter(text, label) { const c = this.el.counter; if (text == null) { c.hidden = true; return; } c.hidden = false; c.innerHTML = (label ? `<small>${label}</small>` : '') + text; },
   update(dt) {

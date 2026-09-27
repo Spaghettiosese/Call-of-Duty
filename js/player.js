@@ -5,6 +5,8 @@
 const WDEF = {
   garand: { name: 'M1 GARAND', mag: 8, maxRes: 96, dmg: 105, head: 2.2, limb: 0.72, rate: 0.14, auto: false, hip: 2.6, ads: 0.12, rec: [0.022, 0.006], range: 400, zoom: 0.72, snd: 'garand' },
   thompson: { name: 'M1A1 THOMPSON', mag: 30, maxRes: 240, dmg: 32, head: 2.0, limb: 0.8, rate: 0.088, auto: true, hip: 3.6, ads: 1.0, rec: [0.0085, 0.006], range: 90, zoom: 0.84, snd: 'thompson', tracer: 4 },
+  kar98: { name: 'KAR98K', mag: 5, maxRes: 60, dmg: 125, head: 2.2, limb: 0.8, rate: 1.1, auto: false, hip: 2.8, ads: 0.07, rec: [0.034, 0.008], range: 450, zoom: 0.68, snd: 'kar98', bolt: true },
+  mp40: { name: 'MP 40', mag: 32, maxRes: 192, dmg: 28, head: 2.0, limb: 0.8, rate: 0.109, auto: true, hip: 3.8, ads: 1.05, rec: [0.0075, 0.005], range: 80, zoom: 0.85, snd: 'mp40' },
   colt: { name: 'M1911', mag: 7, maxRes: 70, dmg: 48, head: 2.6, limb: 0.8, rate: 0.15, auto: false, hip: 2.2, ads: 0.55, rec: [0.03, 0.01], range: 60, zoom: 0.9, snd: 'colt' },
 };
 const Player = {
@@ -290,7 +292,7 @@ const Player = {
   /* ---------------- interaction ---------------- */
   updateInteract(dt) {
     let best = null, bd = 1e9; const e = this.eyePos(), fwd = this.forward();
-    if (this.alive && this.control && !Story.cam) for (const it of Story.inter) {
+    if (this.alive && this.control && !Story.cam) for (const it of Story.inter.concat(Pickups.list)) {
       if (!it.enabled) continue; const p = typeof it.pos === 'function' ? it.pos() : it.pos;
       const d = p.distanceTo(e); if (d > (it.r || 2.2)) continue;
       const dir = p.clone().sub(e).normalize(); const dot = dir.dot(fwd);

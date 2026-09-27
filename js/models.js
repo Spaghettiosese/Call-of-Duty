@@ -149,6 +149,9 @@ function makeNpcGun(type) {
     const bip = new THREE.Group(); bip.position.set(0, 0.03, 0.72); g.add(bip);
     mesh(cylG(0.008, 0.008, 0.35, 5), S, bip, 0, 0, 0, { r: [0, 0, 0.35] }); mesh(cylG(0.008, 0.008, 0.35, 5), S, bip, 0, 0, 0, { r: [0, 0, -0.35] });
     muzzle = V3(0, 0.05, 0.85); fore = V3(0, -0.02, -0.2);
+  } else if (type === 'colt') {
+    mesh(boxG(0.028, 0.032, 0.21), MAT.gunBlue, g, 0, 0.05, 0.08); mesh(boxG(0.03, 0.11, 0.05), MAT.grip, g, 0, -0.03, -0.03, { r: [0.3, 0, 0] });
+    muzzle = V3(0, 0.05, 0.19);
   } else if (type === 'bazooka' || type === 'satchel') {
     mesh(boxG(0.2, 0.15, 0.08), MAT.webbing, g, 0, 0, 0);
   }

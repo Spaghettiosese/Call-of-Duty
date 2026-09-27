@@ -8,7 +8,7 @@ const Actors = {
     for (const a of this.list) if (a.h) R.scene && R.scene.remove(a.h.root);
     for (const g of this.grenades) R.scene && R.scene.remove(g.m);
     for (const t of this.tanks) { t.engine && t.engine.stop(); }
-    this.list = []; this.grenades = []; this.tanks = []; this.props = []; this.nadeCd = 4; this.explosionHooks = [];
+    this.list = []; this.grenades = []; this.tanks = []; this.props = []; Pickups.clear(); this.nadeCd = 4; this.explosionHooks = [];
   },
   get enemies() { return this.list.filter(a => a.team === 'de'); },
   get allies() { return this.list.filter(a => a.team === 'us'); },
@@ -111,7 +111,7 @@ class Actor {
     this.crumple = Math.random() < 0.45;
     if (o.head && this.h.helmet && Math.random() < 0.75) this.popHelmet(fromDir);
     if (this.glint) this.glint.visible = false;
-    if (this.h.gun) { const g = this.h.gun; const wp = V3(), wq = new THREE.Quaternion(); g.getWorldPosition(wp); this.h.torso.remove(g); g.position.copy(wp); g.position.y = groundAt(wp.x, wp.z, wp.y) + 0.05; g.rotation.set(Math.PI / 2 * 0, rand(0, 6), Math.PI / 2); R.scene.add(g); this.h.gun = null; }
+    if (this.h.gun) { const g = this.h.gun; const wp = V3(), wq = new THREE.Quaternion(); g.getWorldPosition(wp); this.h.torso.remove(g); g.position.copy(wp); g.position.y = groundAt(wp.x, wp.z, wp.y) + 0.05; g.rotation.set(Math.PI / 2 * 0, rand(0, 6), Math.PI / 2); R.scene.add(g); if (this.team === 'de' && (this.h.gunType === 'kar98' || this.h.gunType === 'mp40')) Pickups.add(g, this.h.gunType); this.h.gun = null; }
     if (this.onDeath) this.onDeath(this);
     if (this.team === 'de') Story.onEnemyDeath && Story.onEnemyDeath(this, o);
   }
@@ -245,7 +245,7 @@ class Enemy extends Actor {
     this.fireCd -= dt;
     const peekOk = this.peeking || B === 'rush' || B === 'mg' || (B === 'advance' && this.moving && this.weapon === 'mp40');
     if (this.alerted && peekOk && this.aimW > 0.6 && P.alive) {
-      if (this.burstLeft > 0) { this.burstT -= dt; if (this.burstT <= 0) { this.shoot(); this.burstLeft--; this.burstT = this.w.rate; } }
+      if (this.burstLeft > 0) { this.burstT -= dt; if (this.burstT <= 0) { if (this.o.preferAllies && Math.random() < this.o.preferAllies && Actors.list.some(a => a.team === 'us' && a.alive && a.extra)) this.shootAtAlly(true); else this.shoot(); this.burstLeft--; this.burstT = this.w.rate; } }
       else if (this.fireCd <= 0) {
         if (this.canSee) { this.burstLeft = randi(this.w.burst[0], this.w.burst[1]); this.burstT = 0; this.fireCd = rand(this.w.cd[0], this.w.cd[1]) + (B === 'mg' ? 0 : 0); }
         else if (Math.random() < 0.35) { this.shootAtAlly(); this.fireCd = rand(this.w.cd[0], this.w.cd[1]); }
@@ -286,14 +286,16 @@ class Enemy extends Actor {
     const cp = P.eyePos(); const toP = cp.clone().sub(m); const along = toP.dot(dir); const closest = m.clone().addScaledVector(dir, along);
     if (along > 0 && closest.distanceTo(cp) < 2.5) { const side = V3().subVectors(closest, cp); const rgt = V3(Math.cos(P.yaw), 0, -Math.sin(P.yaw)); SFX.whiz(clamp(side.dot(rgt), -1, 1)); P.suppress(0.25); }
   }
-  shootAtAlly() {
-    const allies = Actors.allies.filter(a => a.alive && a.pos.distanceTo(this.pos) < 90); if (!allies.length) return;
+  shootAtAlly(extrasOnly) {
+    const range = this.w.tracer ? 190 : 90;
+    const allies = Actors.list.filter(a => a.team === 'us' && a.alive && (!extrasOnly || a.extra) && a.pos.distanceTo(this.pos) < range); if (!allies.length) return;
     const a = pick(allies), m = humanMuzzle(this.h, V3()), tp = a.chest(V3()).add(V3(rand(-1.5, 1.5), rand(-0.5, 1), rand(-1.5, 1.5)));
     this.faceTo(a.pos, 1, 1);
     SFX.shot(this.w.snd, m); FX.muzzle(m, tp.clone().sub(m).normalize(), 0.9, true); this.recoil = 1;
     const dir = tp.clone().sub(m).normalize(), r = raycast(m, dir, m.distanceTo(tp) + 20, { bullet: true });
     if (r.hit) FX.impact(r.point, r.normal, r.surf);
-    if (this.w.tracer) FX.tracer(m, dir, 80, { speed: 300, len: 5, w: 1.3 });
+    if (this.w.tracer) FX.tracer(m, dir, m.distanceTo(tp) + 10, { speed: 300, len: 5, w: 1.3 });
+    if (a.extra && Math.random() < (this.w.tracer ? 0.035 : 0.1)) a.die(this.pos);
   }
   throwNade() {
     this.nades--; Actors.nadeCd = rand(7, 11) / DIFFICULTY[Settings.difficulty].acc;
@@ -323,6 +325,7 @@ class Ally extends Actor {
     this.weapon = o.weapon || 'garand'; this.fireCd = rand(0.5, 2); this.target = null; this.tT = 0; this.invuln = true; this.follow = null;
     this.combat = o.combat !== false; this.coverCrouch = false; this.killMul = o.killMul == null ? 1 : o.killMul;
   }
+  damage(amt, from) { if (this.extra && amt > 35) this.die(from); }
   setGoal(p, run = true, crouch = false) { this.goal = p ? p.clone() : null; this.goalRun = run; this.coverCrouch = crouch; this.stuck = 0; }
   teleport(p, yaw) { this.pos.copy(p); this.pos.y = groundAt(p.x, p.z, Math.max(p.y, terrainH(p.x, p.z)) + 1.5); if (yaw != null) this.yaw = yaw; this.goal = null; this.place(); }
   update(dt) {

@@ -310,7 +310,7 @@ const VM = {
   clipMode: 'gun', magMode: 'gun', nadeVisible: false,
   init() {
     this.root = new THREE.Group(); this.pivot = new THREE.Group(); this.root.add(this.pivot);
-    this.W.garand = buildGarand(); this.W.thompson = buildThompson(); this.W.colt = buildColt();
+    this.W.garand = buildGarand(); this.W.thompson = buildThompson(); this.W.colt = buildColt(); this.W.kar98 = buildKar98(); this.W.mp40 = buildMP40();
     for (const k in this.W) { const w = this.W[k]; w.g.visible = false; this.pivot.add(w.g); w.g.traverse(m => { if (m.isMesh) { m.castShadow = false; m.frustumCulled = false; } }); }
     const R_ = buildFPArm(1), L_ = buildFPArm(-1);
     R_.sh.position.set(0.21, -0.33, 0.2); L_.sh.position.set(-0.17, -0.34, 0.12);
@@ -335,7 +335,7 @@ const VM = {
     this.cur = this.W[id] || null; this.curId = id;
     if (!this.cur) { this.visible = false; return; }
     this.visible = true; this.cur.g.visible = true;
-    this.clipMode = 'gun'; this.magMode = 'gun';
+    this.clipMode = 'gun'; this.magMode = 'gun'; this.stripMode = 'hidden'; this.pendingBolt = 0;
     this.parts.oprod = 0; this.parts.bolt = 1; this.parts.slide = 0;
     this.anim = null;
     if (!instant) this.play('draw');
@@ -348,17 +348,19 @@ const VM = {
     this.anim = A; this.animName = name; this.animT = 0; this.evI = 0; this.onDone = onDone || null; this.onEvent = null;
     return true;
   },
-  cancel() { if (this.anim && (this.animName.startsWith('reload') || this.animName === 'inspect')) { this.anim = null; this.animName = null; this.clipMode = 'gun'; this.magMode = 'gun'; } },
+  cancel() { if (this.anim && (this.animName.startsWith('reload') || this.animName === 'inspect')) { this.anim = null; this.animName = null; this.clipMode = 'gun'; this.magMode = 'gun'; this.stripMode = 'hidden'; } },
   ejectClip() { if (!this.cur || this.curId !== 'garand') return; SFX.ping(); this.dropPart(this.cur.parts.clip, V3(0.3, 2.4, 0.1), 12); this.clipMode = 'hidden'; },
   busy() { return !!this.anim; },
   fire(w) {
     const r = this.rec, adsK = 1 - this.ads * 0.55;
-    const k = { garand: [0.05, 0.12, 0.04], thompson: [0.022, 0.035, 0.018], colt: [0.035, 0.18, 0.03] }[w] || [0.03, 0.06, 0.02];
+    const k = { garand: [0.05, 0.12, 0.04], thompson: [0.022, 0.035, 0.018], colt: [0.035, 0.18, 0.03], kar98: [0.065, 0.16, 0.04], mp40: [0.02, 0.03, 0.016] }[w] || [0.03, 0.06, 0.02];
     r.vz += k[0] * 60 * adsK; r.vrx += k[1] * 60 * adsK; r.vry += rand(-1, 1) * k[2] * 40; r.vrz += rand(-1, 1) * k[2] * 60;
-    this.flashT = 0.045; this.flash.rotation.z = Math.random() * TAU; this.flash.scale.setScalar(w === 'colt' ? 0.6 : w === 'thompson' ? 0.8 : 1.15);
+    this.flashT = 0.045; this.flash.rotation.z = Math.random() * TAU; this.flash.scale.setScalar(w === 'colt' ? 0.6 : (w === 'thompson' || w === 'mp40') ? 0.8 : 1.15);
     if (w === 'garand') this.parts.oprod = 1, this.cycleT = 0.075;
     if (w === 'thompson') this.parts.bolt = 0, this.cycleT = 0.05;
     if (w === 'colt') this.parts.slide = 1, this.cycleT = 0.06;
+    if (w === 'mp40') this.parts.bolt = 0, this.cycleT = 0.05;
+    if (w === 'kar98') { this.pendingBolt = 0.14; return; }
     this.spawnCasing(w);
   },
   spawnCasing(w) {
@@ -389,6 +391,10 @@ const VM = {
       case 'clipHand': this.clipMode = 'hand'; this.showRounds(8); break;
       case 'clipSeat': this.clipMode = 'gun'; break;
       case 'clipIn': SFX.mech('clipIn'); break;
+      case 'boltUp': SFX.mech('click'); break;
+      case 'eject': SFX.mech('boltBack'); this.spawnCasing('garand'); break;
+      case 'stripHand': this.stripMode = 'hand'; break;
+      case 'stripOff': if (W.parts.strip) { this.stripMode = 'hidden'; this.dropPart(W.parts.strip, V3(0.4, 1.2, 0), 10); } break;
       case 'magHand': this.magMode = 'hand'; break;
       case 'magOut': SFX.mech('magOut'); if (this.curId === 'colt') this.magMode = 'hidden', this.dropPart(W.parts.mag, V3(0, -1.5, 0)); break;
       case 'magDrop': if (this.curId !== 'colt') { this.dropPart(W.parts.mag, V3(-0.2, -1.2, 0.1), 3); this.magMode = 'hidden'; } break;
@@ -411,7 +417,8 @@ const VM = {
     this.root.position.copy(R.camera.position); this.root.quaternion.copy(R.camera.quaternion);
     R.vmCamera.position.copy(R.camera.position); R.vmCamera.quaternion.copy(R.camera.quaternion);
     // state blends
-    const animating = !!this.anim && this.animName !== 'draw';
+    const animating = !!this.anim && this.animName !== 'draw' && this.animName !== 'bolt';
+    if (this.pendingBolt > 0) { this.pendingBolt -= dt; if (this.pendingBolt <= 0 && !this.anim && P.weaponAmmo() > 0 && id === 'kar98') this.play('bolt', null, true); }
     this.ads = damp(this.ads, P.adsWant && !animating ? 1 : 0, 14, dt);
     this.sprint = damp(this.sprint, P.sprinting && !animating ? 1 : 0, 8, dt);
     this.crouch = damp(this.crouch, P.crouchAmt, 8, dt);
@@ -445,19 +452,20 @@ const VM = {
     // crouch tilt
     rz += 0.05 * this.crouch * (1 - ads);
     // animation offsets
-    const tmp = [0, 0, 0, 0, 0, 0], lh = [0, 0, 0, 0];
-    let lhW = 0; const lhLocal = V3();
+    const tmp = [0, 0, 0, 0, 0, 0], lh = [0, 0, 0, 0], rh = [0, 0, 0, 0];
+    let lhW = 0, rhW = 0; const lhLocal = V3(), rhLocal = V3();
     if (this.anim) {
       const A = this.anim; this.animT += dt;
       while (A.ev && this.evI < A.ev.length && this.animT >= A.ev[this.evI][0]) { this.event(A.ev[this.evI][1]); this.evI++; }
       if (A.gun) { sampleTrack(A.gun, this.animT, tmp); pos.x += tmp[0]; pos.y += tmp[1]; pos.z += tmp[2]; rx += tmp[3]; ry += tmp[4]; rz += tmp[5]; }
       if (A.lh) { sampleTrack(A.lh, this.animT, lh); lhW = lh[0]; lhLocal.set(lh[1], lh[2], lh[3]); }
+      if (A.rh) { sampleTrack(A.rh, this.animT, rh); rhW = rh[0]; rhLocal.set(rh[1], rh[2], rh[3]); }
       if (A.parts) for (const k in A.parts) { const o = [0]; sampleTrack(A.parts[k], this.animT, o); this.parts[k] = o[0]; }
       if (A.nade) { const o = [0, 0, 0, 0]; sampleTrack(A.nade, this.animT, o); this.nade.position.set(o[0], o[1], o[2]); this.nade.rotation.set(o[3], 0.4, 0.2); this.nadeVisible = this.animT > 0.1 && this.animT < 0.67; }
       if (this.animT >= A.dur) { const cb = this.onDone; const nm = this.animName; this.anim = null; this.animName = null; this.nadeVisible = false; if (cb) cb(nm); }
     } else {
       if (this.cycleT > 0) this.cycleT -= dt;
-      if (!(this.cycleT > 0)) { const empty = P.weaponAmmo() === 0; if (id === 'garand') this.parts.oprod = empty ? 1 : 0; if (id === 'thompson') this.parts.bolt = empty ? 0 : 1; if (id === 'colt') this.parts.slide = empty ? 1 : 0; }
+      if (!(this.cycleT > 0)) { const empty = P.weaponAmmo() === 0; if (id === 'garand') this.parts.oprod = empty ? 1 : 0; if (id === 'thompson' || id === 'mp40') this.parts.bolt = empty ? 0 : 1; if (id === 'kar98') { this.parts.boltRot = 0; this.parts.boltPull = 0; } if (id === 'colt') this.parts.slide = empty ? 1 : 0; }
     }
     pos.z += r.z; rx += r.rx; ry += r.ry; rz += r.rz;
     // ADS: keep sight line centred - offset recoil rotation around the sight
@@ -467,6 +475,7 @@ const VM = {
     if (W.parts.bolt) W.parts.bolt.position.z = this.parts.bolt * 0.07;
     if (W.parts.slide) W.parts.slide.position.z = this.parts.slide * 0.048;
     if (W.parts.hammer) W.parts.hammer.rotation.x = -0.4 - this.parts.slide * 0.6;
+    if (W.parts.kbolt) { W.parts.kbolt.rotation.z = (this.parts.boltRot || 0) * 1.35; W.parts.kbolt.position.z = (this.parts.boltPull || 0) * 0.085; }
     // left hand target (gun local)
     const lhGrip = anc.gripL.clone();
     const lhT = lhW > 0 ? lhGrip.clone().lerp(lhLocal, clamp(lhW, 0, 1)) : lhGrip;
@@ -479,17 +488,21 @@ const VM = {
       // stack rounds so top round sits at the top
       const vis = W.parts.rounds.filter(x => x.visible).length;
       W.parts.rounds.forEach((rr, i) => { rr.position.y = 0.022 - (vis - 1 - i) * 0.0078; });
+    } else if (id === 'kar98') {
+      const st = W.parts.strip; st.visible = this.stripMode === 'hand' || this.stripMode === 'gun';
+      if (this.stripMode === 'hand') st.position.copy(lhT).add(V3(0, 0.05, 0)); else st.position.copy(anc.clipSlot);
+      if (this.stripMode === 'hand' && this.animT > 1.3) this.stripMode = 'gun';
     } else if (W.parts.mag) {
       const mag = W.parts.mag;
       mag.visible = this.magMode !== 'hidden';
-      if (this.magMode === 'hand') { mag.position.copy(lhT).add(id === 'colt' ? V3(0, 0.07, 0) : V3(0, 0.13, 0)); }
+      if (this.magMode === 'hand') { mag.position.copy(lhT).add(W.magHandOff || (id === 'colt' ? V3(0, 0.07, 0) : V3(0, 0.13, 0))); }
       else mag.position.copy(anc.magSlot);
       if (W.parts.magTop) W.parts.magTop.visible = P.weaponAmmo() > 0 || this.magMode === 'hand';
     }
     // hands IK (root space)
     this.pivot.updateMatrix(); W.g.updateMatrix();
     const toRoot = (v) => v.clone().applyMatrix4(W.g.matrix).applyMatrix4(this.pivot.matrix);
-    const rT = toRoot(anc.gripR), lT = toRoot(lhT);
+    const rT = toRoot(rhW > 0 ? anc.gripR.clone().lerp(rhLocal, clamp(rhW, 0, 1)) : anc.gripR), lT = toRoot(lhT);
     if (this.nadeVisible || (this.anim && this.anim.nade && this.animT > 0.1 && this.animT < 0.8)) { rT.copy(this.nade.position).add(V3(0.0, -0.05, 0.03)); }
     this.nade.visible = this.nadeVisible;
     solveFPArm(this.arms.R, rT, V3(0.6, -0.9, 0.3).normalize());

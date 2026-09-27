@@ -126,7 +126,7 @@ function buildBeachLevel() {
   FX.smokeColumn(V3(60, 33, -95), { size: 1.2, rate: 4, dark: 0.2, wind: 2 });
   FX.smokeColumn(V3(-8, 3.5, -40), { size: 0.8, rate: 3, dark: 0.35, wind: 2.5 });
   // bodies
-  for (let i = 0; i < 16; i++) { const x = sr(-50, 55), z = sr(-14, 55); if (Math.abs(x - 4) < 3) continue; layBody(x, z); }
+  for (let i = 0; i < 26; i++) { const x = sr(-60, 65), z = sr(-14, 55); if (Math.abs(x - 4) < 3) continue; layBody(x, z); }
   // Bishop, the engineer, and his bangalore
   BEACH.bishopPos = V3(17, terrainH(17, 7), 7); layBody(17, 7, { yaw: 0.4 });
   BEACH.bangalore = new THREE.Mesh(cylG(0.04, 0.04, 3, 8, false), MAT.od); BEACH.bangalore.rotation.set(Math.PI / 2, 0, 0.5); BEACH.bangalore.position.set(18, terrainH(18, 7) + 0.1, 7.6); R.scene.add(BEACH.bangalore);
@@ -190,7 +190,7 @@ function beachTick(dt) {
       const P = Player.pos; let p;
       if (BEACH.arty.boats) { p = V3(rand(-60, 70), 0, (B ? B.g.position.z : 120) + rand(-50, 40)); if (Math.hypot(p.x - 4, p.z - B.g.position.z) < 14) p.x += 25; }
       else {
-        const idle = BEACH.idleT > 9, minD = idle ? 3 : 11;
+        const idle = BEACH.idleT > 12, minD = idle ? 5 : 15;
         const a = rand(0, TAU), d = rand(minD, minD + 22); p = V3(P.x + Math.cos(a) * d, 0, P.z + Math.sin(a) * d * 0.7);
         p.z = clamp(p.z, -18, 70);
         if (idle) BEACH.idleT = 5;
@@ -219,7 +219,8 @@ function beachTick(dt) {
     }
   }
   // dead ground behind the seawall, easy targets in the open
-  Story.playerHitMul = Player.pos.z < -24 && Player.pos.z > -32 ? 0.3 : Player.pos.z > 45 ? 0.55 : 0.9;
+  updateTroops(dt);
+  Story.playerHitMul = Player.pos.z < -24 && Player.pos.z > -32 ? 0.25 : Player.pos.z > 45 ? 0.3 : 0.55;
   // mines
   if (Player.pos.z < -31.5 && Player.pos.z > -52 && Player.alive) {
     if (Math.abs(Player.pos.x - 4) > 2.1 && !BEACH.mineWarned) { BEACH.mineWarned = true; Story.say('Dupree', 'Kessler! Stay on the tape — it’s a minefield!', 3); }
@@ -232,6 +233,36 @@ function beachTick(dt) {
 BEACH.cover = () => { // is the player tucked behind an obstacle facing the bluffs?
   const e = Player.eyePos(); return !lineOfSight(e, V3(e.x, e.y + 2.6, e.z - 8));
 };
+/* ---------- the rest of the assault wave ---------- */
+function spawnTroop(x, z) {
+  const a = S.ally({ pos: [x, 0, z], weapon: pick(['garand', 'garand', 'garand', 'thompson']), model: { skinI: randi(0, 5), hair: pick([MAT.hairBrown, MAT.hairDark, MAT.hairBlond]) } });
+  a.extra = true; a.invuln = false; a.killMul = 0;
+  const x1 = clamp(x + rand(-10, 10), -60, 66), x2 = clamp(x1 + rand(-10, 10), -60, 66);
+  BEACH.troops.push({ a, legs: [[x1, rand(28, 44)], [x2, rand(6, 20)], [clamp(x2 + rand(-8, 8), -60, 66), -25.4]], li: 0, t: 0, wait: rand(0.2, 1.5) });
+  return a;
+}
+function landWave(n) {
+  const boats = (BEACH.others || []).filter(b => b.arrived && !b.dead);
+  for (let i = 0; i < n; i++) {
+    const b = boats.length ? pick(boats) : null, x = b ? b.x + rand(-2, 2) : rand(-50, 60), z = b ? b.g.position.z - rand(6, 10) : rand(60, 68);
+    spawnTroop(clamp(x, -62, 68), z);
+  }
+}
+function updateTroops(dt) {
+  if (!BEACH.troops) return;
+  for (const t of BEACH.troops) {
+    const a = t.a; if (!a.alive || t.li > t.legs.length) continue;
+    t.t += dt;
+    const g = a.goal, at = !g || Math.hypot(g.x - a.pos.x, g.z - a.pos.z) < 1;
+    if (at || t.t > 16) { t.wait -= dt; if (t.wait <= 0 && t.li < t.legs.length) { const L = t.legs[t.li++]; a.setGoal(V3(L[0], 0, L[1]), true, true); t.t = 0; t.wait = rand(3, 9); } }
+  }
+  BEACH.troops = BEACH.troops.filter(t => t.a.alive || t.a.deathT < 3);
+  if (BEACH.waves) {
+    BEACH.waveT = (BEACH.waveT == null ? 14 : BEACH.waveT) - dt;
+    const alive = Actors.list.filter(a => a.extra && a.alive).length;
+    if (BEACH.waveT <= 0) { BEACH.waveT = rand(14, 20); if (alive < 26) landWave(Math.min(5, 26 - alive)); }
+  }
+}
 function setAllyPath(name, pts, run = true, crouch = true) { const a = Actors.byName(name); if (a) { a.setGoal(V3(pts[0], 0, pts[1]), run, crouch); } }
 
 MISSIONS.push({
@@ -256,7 +287,7 @@ MISSIONS.push({
     g.position.set(4, 0.2, 236); g.rotation.y = Math.PI;
     // other boats
     BEACH.others = [];
-    for (const [x, d, z0] of [[-30, 58, 250], [-14, 48, 232], [22, 54, 248], [40, 62, 262], [58, 57, 245]]) {
+    for (const [x, d, z0] of [[-30, 58, 250], [-14, 48, 232], [22, 54, 248], [40, 62, 262], [58, 57, 245], [-52, 60, 256], [-42, 52, 240], [32, 50, 238], [50, 66, 270], [70, 61, 258], [12, 70, 300], [-6, 72, 312], [-22, 75, 322], [28, 78, 330]]) {
       const b = makeLCVP(); makeBoatLoad(b); b.position.set(x, 0.2, z0); b.rotation.y = Math.PI; R.scene.add(b);
       BEACH.others.push({ g: b, x, z0, z1: 76 + Math.abs(x) * 0.08, u: 0, dur: d, arrived: false });
     }
@@ -267,12 +298,12 @@ MISSIONS.push({
     // MG crews on the bluff (until destroyed)
     BEACH.mgs = [];
     if (stage <= 5) {
-      const a = S.enemy({ pos: [30, BEACH.HA, -93.9], fixedY: BEACH.HA, weapon: 'mg42', behavior: 'mg', alert: true, yaw: Math.PI, arc: { yaw: Math.PI, half: 0.85 }, throws: false });
+      const a = S.enemy({ pos: [30, BEACH.HA, -93.9], fixedY: BEACH.HA, weapon: 'mg42', behavior: 'mg', alert: true, yaw: Math.PI, arc: { yaw: Math.PI, half: 0.85 }, throws: false, preferAllies: 0.65, accMul: 0.6 });
       const l = S.enemy({ pos: [31.4, BEACH.HA, -95.2], fixedY: BEACH.HA, weapon: 'kar98', behavior: 'hold', alert: true, yaw: Math.PI, spots: [{ peek: V3(31.4, BEACH.HA, -94.2), hide: V3(31.4, BEACH.HA, -95.6), crouchHide: true }], throws: false });
       BEACH.bunkerA = [a, l]; BEACH.mgs.push(a);
     }
-    if (stage <= 3) { BEACH.mgB = S.enemy({ pos: [-38, BEACH.HB, -90.9], fixedY: BEACH.HB, weapon: 'mg42', behavior: 'mg', alert: true, yaw: Math.PI, arc: { yaw: Math.PI, half: 0.85 }, throws: false }); BEACH.mgs.push(BEACH.mgB); }
-    if (stage <= 4) { const c = BEACH.nestC; BEACH.mgC = S.enemy({ pos: [c.x, c.y, c.z], weapon: 'mg42', behavior: 'mg', alert: true, yaw: Math.PI, arc: { yaw: Math.PI - 0.2, half: 0.9 }, throws: false }); BEACH.mgs.push(BEACH.mgC); }
+    if (stage <= 3) { BEACH.mgB = S.enemy({ pos: [-38, BEACH.HB, -90.9], fixedY: BEACH.HB, weapon: 'mg42', behavior: 'mg', alert: true, yaw: Math.PI, arc: { yaw: Math.PI, half: 0.85 }, throws: false, preferAllies: 0.7, accMul: 0.6 }); BEACH.mgs.push(BEACH.mgB); }
+    if (stage <= 4) { const c = BEACH.nestC; BEACH.mgC = S.enemy({ pos: [c.x, c.y, c.z], weapon: 'mg42', behavior: 'mg', alert: true, yaw: Math.PI, arc: { yaw: Math.PI - 0.2, half: 0.9 }, throws: false, preferAllies: 0.5, accMul: 0.7 }); BEACH.mgs.push(BEACH.mgC); }
     BEACH.rake = stage >= 1 && stage <= 4;
   },
   stages: [
@@ -338,7 +369,8 @@ MISSIONS.push({
         BEACH.others.forEach((b, i) => { b.u = 1; b.g.position.z = b.z1; b.arrived = true; b.g.userData.ramp.rotation.x = 1.4; if (i === 1) { b.dead = true; b.g.position.y = -1.5; } });
       },
       async run(S) {
-        Music.play('combat'); BEACH.arty = { min: 2.5, max: 5 }; BEACH.rake = true;
+        Music.play('combat'); BEACH.arty = { min: 3, max: 6 }; BEACH.rake = true;
+        BEACH.troops = BEACH.troops || []; landWave(16); BEACH.waves = true;
         if (Story.cpStage === 1) S.place({ Mahoney: [0, 0, 66], Russo: [6, 0, 67], Dupree: [-3, 0, 66], Weiss: [2, 0, 65], Doc: [9, 0, 66] });
         S.obj('Get to the seawall', V3(4, 4.2, -26.5), 'Seawall');
         S.hint('Move from obstacle to obstacle. Don’t stop in the open.', 6);
@@ -398,7 +430,7 @@ MISSIONS.push({
       cp: { pos: [4, 0, -26], yaw: 0 },
       restore() { R.scene.remove(BEACH.bangalore); BEACH.wires.filter(w => w.x0 <= 4 && w.x0 + 12 >= 4).forEach(w => w.w.remove()); BEACH.breached = true; },
       async run(S) {
-        BEACH.arty = null;
+        BEACH.arty = null; BEACH.waves = false;
         if (Story.cpStage === 3) S.place({ Mahoney: [-3, 0, -25.4], Russo: [6, 0, -25.4], Dupree: [-7, 0, -25.4], Weiss: [1, 0, -25.4], Doc: [10, 0, -25.4] });
         // riflemen on the lower slopes
         BEACH.lower = BEACH.nests.slice(0, 4).map(([x, z]) => S.enemy({ pos: [x, 0, z], weapon: 'kar98', behavior: 'hold', alert: true, spots: [{ peek: V3(x, 0, z), crouchHide: true }], yaw: Math.PI, accMul: 0.8 }));
