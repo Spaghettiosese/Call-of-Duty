@@ -45,6 +45,8 @@ The game ends at the close of Chapter One.
 
 - **Captured weapons:** fallen Germans drop Kar98k rifles (bolt-action, stripper-clip reloads) and MP 40s; press E to pick one up, swap it for your current gun, or take its ammo.
 - **Weapons:** M1 Garand (en-bloc clip with ejection ping, locked-open bolt, partial-clip reloads), M1A1 Thompson (magazine drop and cocking handle), M1911 (slide lock), Mk 2 grenades. Each has fire, reload, empty reload, inspect, draw, melee and throw animations, with IK-driven arms, ejected casings and muzzle flash.
+- **Navigation:** each level builds a walkability grid (walls, rubble, hedgerow banks, wire, deep water) and soldiers path around obstacles with A*.
+- **Name tags:** look at a squadmate to see his rank and name.
 - **Enemies:** cover-peeking riflemen, advancing squads, rushers, MG42 crews with limited arcs that can be flanked, a church-tower sniper with scope glint, grenade throwers, and a Panzer IV.
 - **Squad:** Sgt. Mahoney, Frankie Russo, Ray Dupree, Eli Weiss and Doc Harlan move, take cover and fight alongside you.
 - **Rendering:** HDR pipeline with ACES tone mapping, per-mission color grading, film grain, vignette, bloom, soft shadows, image-based lighting, GPU particles (smoke columns, fire, dust, sparks), bullet decals, tracers, wind-blown grass and foliage.
@@ -59,6 +61,7 @@ js/core.js            utilities, noise, settings, input
 js/textures.js        procedural textures and materials
 js/audio.js           procedural sound and music
 js/render.js          renderer, post-processing, sky, particles, collision, terrain
+js/nav.js             navigation grid, A* pathfinding, cover finding
 js/models.js          characters (with arm IK), NPC weapons, vehicles
 js/kit.js             level-building helpers (buildings, ruins, trees, hedgerows, wire)
 js/viewmodel.js       first-person weapons and animations

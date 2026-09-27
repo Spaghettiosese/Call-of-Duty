@@ -108,6 +108,9 @@ button{font:inherit;color:inherit}
 #brief .bp{font-family:var(--f-type);font-size:14px;color:var(--ink-dim)}
 #brief .bo{font-size:18px;margin-top:8px}
 #brief .bs{font-size:13px;color:var(--ink-faint);letter-spacing:.08em;font-variant-numeric:tabular-nums}
+#tag{position:absolute;transform:translate(-50%,-100%);font-size:15px;font-weight:600;letter-spacing:.04em;color:#9ed2a8;white-space:nowrap;padding:1px 8px;background:rgba(8,12,8,.35);border-radius:2px}
+#tag::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:7px;vertical-align:1px}
+#tag.civ{color:#e6dcc4}
 #lbTop,#lbBot{position:fixed;left:0;right:0;height:0;background:#000;transition:height .8s ease;pointer-events:none;z-index:4}
 #lbTop{top:0}#lbBot{bottom:0}
 body.cinema #lbTop,body.cinema #lbBot{height:11vh}
@@ -200,6 +203,7 @@ body.cinema #health,body.cinema #ammo,body.cinema #squad,body.cinema #crosshair,
   <div id="nadeWarn"></div>
   <div id="objective"></div>
   <div id="counter" hidden></div>
+  <div id="tag" hidden></div>
   <div id="brief" hidden><div class="bk" id="briefKicker"></div><div class="bt" id="briefTitle"></div><div class="bp" id="briefPlace"></div><div class="bo" id="briefObj"></div><div class="bs" id="briefStats"></div></div>
   <div id="crosshair"><i class="ch-t" style="top:-15px"></i><i class="ch-b" style="top:7px"></i><i class="ch-l" style="left:-15px"></i><i class="ch-r" style="left:7px"></i><i class="ch-d"></i></div>
   <div id="hitmark"><i></i><i></i><i></i><i></i></div>
@@ -349,6 +353,7 @@ body.cinema #health,body.cinema #ammo,body.cinema #squad,body.cinema #crosshair,
 <script src="js/textures.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/render.js"></script>
+<script src="js/nav.js"></script>
 <script src="js/models.js"></script>
 <script src="js/kit.js"></script>
 <script src="js/viewmodel.js"></script>

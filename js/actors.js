@@ -67,10 +67,24 @@ class Actor {
   eye(out = V3()) { return out.set(this.pos.x, this.pos.y + (this.crouch > 0.5 ? 1.05 : 1.58), this.pos.z); }
   chest(out = V3()) { return out.set(this.pos.x, this.pos.y + (this.crouch > 0.5 ? 0.8 : 1.25), this.pos.z); }
   faceTo(p, dt, rate = 6) { const y = yawTo(p.x - this.pos.x, p.z - this.pos.z); this.yaw += angleDiff(this.yaw, y) * Math.min(1, rate * dt); }
-  moveTo(target, spd, dt) {
+  /* path-following movement around obstacles */
+  goTo(target, spd, dt) {
+    if (this.noCollide || this.o.fixedY != null || !Nav.ready) return this.moveTo(target, spd, dt);
+    let N = this.nav;
+    if (!N || N.goal.distanceTo(target) > 1.2 || N.repath) {
+      if (Nav.budget > 0) { Nav.budget--; const pts = Nav.path(this.pos, target); N = this.nav = { goal: target.clone(), pts: pts || [target.clone()], i: 0, fails: N ? (N.repath ? N.fails + 1 : 0) : 0 }; }
+      else if (!N) return this.moveTo(target, spd, dt);
+    }
+    let wp = N.pts[Math.min(N.i, N.pts.length - 1)];
+    while (N.i < N.pts.length - 1 && Math.hypot(wp.x - this.pos.x, wp.z - this.pos.z) < 0.8) { N.i++; wp = N.pts[N.i]; }
+    this.moveTo(wp, spd, dt, N.i < N.pts.length - 1);
+    if (this.stuck >= 2) { N.repath = true; this.stuck = 0; this.stuckTotal = (this.stuckTotal || 0) + 1; this.pos.x += rand(-0.35, 0.35); this.pos.z += rand(-0.35, 0.35); }
+    return Math.hypot(target.x - this.pos.x, target.z - this.pos.z);
+  }
+  moveTo(target, spd, dt, through = false) {
     const dx = target.x - this.pos.x, dz = target.z - this.pos.z, d = Math.hypot(dx, dz);
-    if (d < 0.15) { this.speed = damp(this.speed, 0, 10, dt); return d; }
-    const s = Math.min(spd, d / dt * 0.5);
+    if (d < 0.15 && !through) { this.speed = damp(this.speed, 0, 10, dt); return d; }
+    const s = through ? spd : Math.min(spd, d / dt * 0.5);
     this.pos.x += dx / d * s * dt; this.pos.z += dz / d * s * dt;
     if (!this.noCollide) collideCircle(this.pos, 0.3, this.pos.y + 0.45, this.pos.y + 1.7, false);
     // separate from other actors
@@ -229,8 +243,36 @@ class Enemy extends Actor {
       target = this.peeking ? spot.peek : (spot.hide || spot.peek); runSpd = 1.5; this.crouchTarget = 0;
     }
     if (B === 'idle' || B === 'scripted') { target = this.goal; runSpd = this.goalRun ? 4.4 : 1.6; this.crouchTarget = 0; wantAim = this.alerted ? 1 : 0; if (this.alerted && B === 'idle') { this.behavior = 'hold'; this.spots = [{ peek: this.pos.clone(), crouchHide: false }]; } }
+    // repositioning between cover (mobile riflemen only)
+    const mobile = this.o.fixedY == null && !this.noCollide && !this.o.stay && (B === 'hold' || (B === 'advance' && !this.moving && this.pathI >= this.path.length));
+    if (mobile && this.alerted && P.alive) {
+      if (this.relocT == null) this.relocT = rand(6, 12);
+      this.relocT -= dt;
+      // flanked: the player can see us even while we duck
+      if (!this.reloc && !this.peeking && this.crouch > 0.7) { this.exposedT = (this.canSee ? (this.exposedT || 0) + dt : 0); if (this.exposedT > 1.2) { this.relocT = 0; this.exposedT = 0; } }
+      if (!this.reloc && this.relocT <= 0 && Nav.budget > 0) {
+        this.relocT = rand(9, 17);
+        const dP = this.pos.distanceTo(P.pos);
+        let around = this.pos;
+        if (dP > 13 && Math.random() < 0.65) { // push forward or swing wide
+          const to = P.pos.clone().sub(this.pos).normalize(), side = V3(-to.z, 0, to.x).multiplyScalar(Math.random() < 0.5 ? -1 : 1);
+          around = this.pos.clone().addScaledVector(to, Math.min(8, dP * 0.35)).addScaledVector(side, Math.random() < 0.4 ? rand(4, 8) : 0);
+        }
+        const avoid = Actors.list.filter(a => a !== this && a.team === 'de' && a.alive).map(a => a.reloc || a.pos);
+        const c = Nav.findCover(around, P.pos, { rMin: 1, rMax: 7, from: this.pos, advance: dP > 13, minThreat: 6, avoid });
+        if (c && c.distanceTo(this.pos) > 1.5) { this.reloc = c; this.relocStart = Story.gameTime; }
+      }
+    }
+    if (this.reloc) {
+      target = this.reloc; runSpd = 4.4; this.crouchTarget = 0; wantAim = this.weapon === 'mp40' ? 0.8 : 0.35;
+      if (this.pos.distanceTo(this.reloc) < 0.9 || Story.gameTime - this.relocStart > 12) {
+        this.spots = [{ peek: this.reloc.clone(), hide: null, crouchHide: true }]; this.spotI = 0; this.peeking = false; this.phaseT = rand(0.6, 1.4);
+        this.reloc = null; if (this.behavior === 'advance') this.behavior = 'hold';
+      }
+    }
     // movement
-    if (target) this.moveTo(target, runSpd, dt); else this.speed = damp(this.speed, 0, 10, dt);
+    const useNav = !!this.reloc || B === 'rush' || (B === 'advance' && this.moving) || B === 'idle' || B === 'scripted';
+    if (target) { if (useNav) this.goTo(target, runSpd, dt); else this.moveTo(target, runSpd, dt); } else this.speed = damp(this.speed, 0, 10, dt);
     this.crouch = damp(this.crouch, this.crouchTarget || 0, 7, dt);
     // aim / face
     if (this.alerted && (this.canSee || B === 'mg' || this.aimW > 0.3)) {
@@ -243,7 +285,7 @@ class Enemy extends Actor {
     this.aimW = damp(this.aimW, wantAim * (this.peeking || B === 'rush' || B === 'mg' ? 1 : 0.4), 6, dt);
     // fire control
     this.fireCd -= dt;
-    const peekOk = this.peeking || B === 'rush' || B === 'mg' || (B === 'advance' && this.moving && this.weapon === 'mp40');
+    const peekOk = (this.reloc ? this.weapon === 'mp40' : this.peeking) || B === 'rush' || B === 'mg' || (B === 'advance' && this.moving && this.weapon === 'mp40');
     if (this.alerted && peekOk && this.aimW > 0.6 && P.alive) {
       if (this.burstLeft > 0) { this.burstT -= dt; if (this.burstT <= 0) { if (this.o.preferAllies && Math.random() < this.o.preferAllies && Actors.list.some(a => a.team === 'us' && a.alive && a.extra)) this.shootAtAlly(true); else this.shoot(); this.burstLeft--; this.burstT = this.w.rate; } }
       else if (this.fireCd <= 0) {
@@ -324,21 +366,36 @@ class Ally extends Actor {
     super({ ...o, team: 'us', model: { side: 'us', weapon: o.weapon || 'garand', net: true, ...(o.model || {}) } });
     this.weapon = o.weapon || 'garand'; this.fireCd = rand(0.5, 2); this.target = null; this.tT = 0; this.invuln = true; this.follow = null;
     this.combat = o.combat !== false; this.coverCrouch = false; this.killMul = o.killMul == null ? 1 : o.killMul;
+    this.display = o.display || DISPLAY.us[this.name] || 'Pvt. ' + pick(SURNAMES); this.followT = rand(0, 1.5); this.scriptT = 0;
   }
   damage(amt, from) { if (this.extra && amt > 35) this.die(from); }
-  setGoal(p, run = true, crouch = false) { this.goal = p ? p.clone() : null; this.goalRun = run; this.coverCrouch = crouch; this.stuck = 0; }
-  teleport(p, yaw) { this.pos.copy(p); this.pos.y = groundAt(p.x, p.z, Math.max(p.y, terrainH(p.x, p.z)) + 1.5); if (yaw != null) this.yaw = yaw; this.goal = null; this.place(); }
+  setGoal(p, run = true, crouch = false, auto = false) { this.goal = p ? p.clone() : null; this.goalRun = run; this.coverCrouch = crouch; this.stuck = 0; this.stuckTotal = 0; if (!auto) this.scriptT = Story.gameTime; this.scriptP = Player.pos.clone(); }
+  teleport(p, yaw) { this.pos.copy(p); this.pos.y = groundAt(p.x, p.z, Math.max(p.y, terrainH(p.x, p.z)) + 1.5); if (yaw != null) this.yaw = yaw; this.goal = this.pos.clone(); this.nav = null; this.scriptT = Story.gameTime; this.scriptP = Player.pos.clone(); this.place(); }
   update(dt) {
     if (!this.alive) return this.updateDeath(dt);
     const P = Player;
     let goal = this.goal;
     if (this.follow) { const f = this.follow; const fp = P.pos.clone().add(V3(Math.cos(P.yaw) * f.x - Math.sin(P.yaw) * f.z, 0, -Math.sin(P.yaw) * f.x - Math.cos(P.yaw) * f.z)); if (this.pos.distanceTo(fp) > 2.5) goal = fp; else goal = null; }
+    // keep up with the player: move to cover near him when he pushes ahead
+    this.followT -= dt;
+    if (this.followT <= 0 && !this.extra && this.o.fixedY == null && !Story.cinematic && Story.squadFollow !== false && P.alive && P.control) {
+      this.followT = 1.5;
+      const anchor = this.goal || this.pos;
+      if (anchor.distanceTo(P.pos) > 14 && Story.gameTime - this.scriptT > 6 && (!this.scriptP || this.scriptP.distanceTo(P.pos) > 12)) {
+        const squad = Actors.list.filter(a => a.team === 'us' && a.alive && !a.extra && a.o.fixedY == null), idx = squad.indexOf(this);
+        const fwd = V3(-Math.sin(P.yaw), 0, -Math.cos(P.yaw)), rgt = V3(Math.cos(P.yaw), 0, -Math.sin(P.yaw));
+        const around = P.pos.clone().addScaledVector(fwd, -2.5 - (idx % 2) * 2).addScaledVector(rgt, (idx % 2 ? 1 : -1) * (2 + Math.floor(idx / 2) * 1.8));
+        let threat = null, td = 60; for (const e of Actors.list) if (e.team === 'de' && e.alive && e.alerted) { const d2 = e.pos.distanceTo(P.pos); if (d2 < td) { td = d2; threat = e.pos; } }
+        const c = Nav.findCover(around, threat, { rMin: 0, rMax: 3.5, from: this.pos, avoid: squad.filter(a => a !== this).map(a => a.goal || a.pos) });
+        this.setGoal(c || around, true, !!threat, true);
+      }
+    }
     let d = 0;
     if (goal) {
       d = Math.hypot(goal.x - this.pos.x, goal.z - this.pos.z);
       const spd = this.goalRun && d > 2 ? 4.6 : 2.2;
-      this.moveTo(goal, spd, dt);
-      if (this.stuck > 3 && this.goal) { const vis = R.camera.position.distanceTo(this.pos) > 25 || V3().subVectors(this.pos, R.camera.position).normalize().dot(R.camera.getWorldDirection(V3())) < 0.2; if (vis) { this.teleport(this.goal); } this.stuck = 0; }
+      if (d > 0.5) this.goTo(goal, spd, dt); else this.speed = damp(this.speed, 0, 8, dt);
+      if ((this.stuckTotal || 0) > 3 && this.goal) { const vis = R.camera.position.distanceTo(this.pos) > 25 || V3().subVectors(this.pos, R.camera.position).normalize().dot(R.camera.getWorldDirection(V3())) < 0.2; if (vis) { const g = this.goal; this.teleport(g); } this.stuckTotal = 0; }
     } else this.speed = damp(this.speed, 0, 8, dt);
     const atGoal = !goal || d < 0.6;
     // combat
@@ -380,13 +437,13 @@ class Ally extends Actor {
    NPC (civilians, scripted soldiers)
    ===================================================================== */
 class NPC extends Actor {
-  constructor(o) { super({ ...o, team: 'npc' }); this.invuln = true; this.hold = o.hold || null; this.talk = 0; this.sit = o.sit || 0; this.handsOn = o.handsOn || null; this.lookAtPlayer = o.lookAtPlayer !== false; this.path = o.path || null; this.pathI = 0; this.walkSpd = o.walkSpd || 1.4; this.loop = !!o.loop; }
+  constructor(o) { super({ ...o, team: 'npc' }); this.display = o.display || (o.model && o.model.side === 'us' ? DISPLAY.us[this.name] || (this.name && /^Recruit/.test(this.name) ? 'Recruit' : null) : DISPLAY.npc[this.name]) || null; this.invuln = true; this.hold = o.hold || null; this.talk = 0; this.sit = o.sit || 0; this.handsOn = o.handsOn || null; this.lookAtPlayer = o.lookAtPlayer !== false; this.path = o.path || null; this.pathI = 0; this.walkSpd = o.walkSpd || 1.4; this.loop = !!o.loop; }
   update(dt) {
     if (!this.alive) return this.updateDeath(dt);
     if (this.path && this.pathI < this.path.length) {
       const d = this.moveTo(this.path[this.pathI], this.walkSpd, dt);
       if (d < 0.3) { this.pathI++; if (this.loop && this.pathI >= this.path.length) this.pathI = 0; }
-    } else if (this.goal) { const d = this.moveTo(this.goal, this.goalRun ? 4 : this.walkSpd, dt); if (d < 0.2) this.goal = null; }
+    } else if (this.goal) { const d = this.goTo(this.goal, this.goalRun ? 4 : this.walkSpd, dt); if (d < 0.2) this.goal = null; }
     else this.speed = damp(this.speed, 0, 8, dt);
     // look at player when near
     const pd = this.pos.distanceTo(Player.pos);

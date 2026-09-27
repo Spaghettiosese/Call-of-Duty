@@ -36,7 +36,7 @@ const Story = {
     await nextFrame(); await nextFrame();
     if (run !== this.run) return;
     // build world
-    Actors.clear(); resetWorld(); KIT.grassMeshes = [];
+    Nav.ready = false; Actors.clear(); resetWorld(); KIT.grassMeshes = [];
     newScene(M.env);
     reseed(M.seed || 11);
     KIT.b = new Batcher();
@@ -45,6 +45,7 @@ const Story = {
     if (World.terrain) R.scene.add(World.terrain.mesh);
     VM.attach();
     for (let i = 0; i < stage; i++) M.stages[i].restore && M.stages[i].restore();
+    Nav.build();
     const st = M.stages[stage];
     const cp = (st && st.cp) || M.spawn;
     Player.spawn(V3(...cp.pos), cp.yaw || 0, (st && st.loadout) || M.loadout);

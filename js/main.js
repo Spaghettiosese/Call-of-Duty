@@ -131,7 +131,7 @@ function frame(now) {
     Input.endFrame(); return;
   }
   if (Game.state === 'play' && !(Game.needClick && !Input.lockFailed)) {
-    R.time += dt;
+    R.time += dt; Nav.budget = 6;
     Player.update(dt);
     Story.update(dt);
     Actors.update(dt);
@@ -149,6 +149,7 @@ function frame(now) {
       $('brief').hidden = !showBrief;
       if (showBrief) { const M = Story.mission, st = Story.stats || {}; $('briefKicker').textContent = M.chapter; $('briefTitle').textContent = M.title; $('briefPlace').textContent = M.place + ' \u2014 ' + M.date; const o = $('objective').querySelector('.obj-text span'); $('briefObj').textContent = o ? 'Objective: ' + o.textContent : 'No current objective'; $('briefStats').textContent = `Kills ${st.kills || 0} \u00b7 Headshots ${st.heads || 0} \u00b7 Difficulty ${DIFFICULTY[Settings.difficulty].name}`; }
     }
+    updateTag();
     // grenade warnings
     const gw = [];
     for (const g of Actors.grenades) if (g.owner !== Player && g.p.distanceTo(Player.pos) < 9) gw.push({ angle: -angleDiff(Player.yaw, yawTo(g.p.x - Player.pos.x, g.p.z - Player.pos.z)) });
@@ -163,6 +164,22 @@ function frame(now) {
   Input.endFrame();
 }
 
+/* name & rank of the friendly you're looking at */
+function updateTag() {
+  const el = $('tag'), o = R.camera.position, d = R.camera.getWorldDirection(V3());
+  let best = null, bd = Math.cos(3.2 * DEG);
+  if (Player.alive && !Story.cinematic) for (const a of Actors.list) {
+    if (!a.alive || !a.display || a.team === 'de') continue;
+    const head = a.h.head.getWorldPosition(V3()); head.y += 0.12;
+    const dist = head.distanceTo(o); if (dist > 45 || dist < 0.5) continue;
+    const dot = head.clone().sub(o).normalize().dot(d); const tol = Math.cos(Math.max(3.2 * DEG, Math.atan(0.45 / dist)));
+    if (dot > tol && dot > bd && lineOfSight(o, head)) { bd = dot; best = { a, head }; }
+  }
+  if (!best) { if (!el.hidden) el.hidden = true; return; }
+  const p = best.head.clone(); p.y += 0.35; p.project(R.camera);
+  el.hidden = false; el.style.left = ((p.x * 0.5 + 0.5) * innerWidth) + 'px'; el.style.top = ((-p.y * 0.5 + 0.5) * innerHeight) + 'px';
+  if (el.dataset.who !== best.a.display) { el.dataset.who = best.a.display; el.textContent = best.a.display; el.classList.toggle('civ', best.a.team === 'npc'); }
+}
 async function boot() {
   loadPrefs();
   if (('ontouchstart' in window) && !matchMedia('(pointer:fine)').matches) $('touchNote').hidden = false;

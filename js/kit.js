@@ -245,7 +245,7 @@ const KIT = {
     for (let i = 0; i <= Math.floor(len / 3); i++) { const t = i / Math.max(1, Math.floor(len / 3)), x = lerp(x0, x1, t), z = lerp(z0, z1, t); const p = new THREE.Mesh(boxG(0.06, 1.1, 0.06), MAT.woodDark); p.position.set(x, terrainH(x, z) + 0.5, z); p.rotation.z = sr(-0.2, 0.2); R.scene.add(p); posts.push(p); }
     const hw = Math.abs(x1 - x0) / 2 + 0.5, hd = Math.abs(z1 - z0) / 2 + 0.5, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, b = terrainH(cx, cz);
     const c = addCol(cx - hw, b - 0.5, cz - hd, cx + hw, b + 1.0, cz + hd, { noBullet: true, surf: 'metal' });
-    return { mesh: m, posts, col: c, remove() { R.scene.remove(m); posts.forEach(p => R.scene.remove(p)); c.active = false; } };
+    return { mesh: m, posts, col: c, remove() { R.scene.remove(m); posts.forEach(p => R.scene.remove(p)); c.active = false; if (Nav.ready) Nav.rebuildRect(c.min[0], c.min[2], c.max[0], c.max[2]); } };
   },
   foliage(x, y, z, size, mat, n = 3) {
     const g = geo('leafquad', () => { const p = new THREE.PlaneGeometry(1, 1); return p; });
