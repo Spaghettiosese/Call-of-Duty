@@ -376,9 +376,10 @@ function buildCampLevel() {
   K.box(2.2, 0.08, 0.5, -4, 0.9, 5.2, MAT.woodDark, { surf: 'wood' }); K.box(0.1, 1.4, 0.4, -5, 0, 5.2, MAT.woodDark); K.box(0.1, 1.4, 0.4, -3, 0, 5.2, MAT.woodDark);
   for (let i = 0; i < 6; i++) { const g = makeNpcGun('garand'); g.position.set(-4.8 + i * 0.32, 0.45, 5.35); g.rotation.set(-Math.PI / 2 + 0.25, 0, 0); R.scene.add(g); }
   // target frames and berm
-  for (const z of [-45.7, -91.4]) { K.box(26, 0.6, 1.2, 0, terrainH(0, z + 1.5) - 0.2, z + 1.4, MAT.wood, { surf: 'wood' }); K.visBox(26, 2.4, 0.15, 0, terrainH(0, z - 1) - 0.1, z - 1.2, MAT.woodDark); }
+  for (const z of [-45.7, -91.4]) K.box(26, 0.45, 1.0, 0, terrainH(0, z + 1.5) - 0.2, z + 1.6, MAT.wood, { surf: 'wood' });
+  K.visBox(26, 2.4, 0.15, 0, terrainH(0, -92.6) - 0.1, -92.6, MAT.woodDark); // backstop only behind the far line
   // lane numbers
-  for (let i = 0; i < 7; i++) { const x = -12 + i * 4; K.plane(makeLabelTex(String(i + 1), '#1d1f18', '#e2d8bd', 64, 64), 0.5, 0.5, x, 0.9, -2.25, 0); }
+  for (let i = 0; i < 7; i++) { const x = -12 + i * 4; K.plane(makeLabelTex(String(i + 1), '#1d1f18', '#e2d8bd', 64, 64), 0.36, 0.36, x, 2.55, -0.72, 0); }
   // barracks
   for (let i = 0; i < 6; i++) K.building({ x: -60 + i * 24, z: 52, w: 18, d: 9, floors: 2, fh: 3, mat: MAT.plasterWhite, trim: MAT.woodPaint, roofMat: MAT.roofSlate, ridgeX: true, shutters: false, spacing: 2.4, winW: 1.0, winH: 1.3 });
   // water tower & flagpole
@@ -436,7 +437,7 @@ MISSIONS.push({
   build() {
     PopTarget.list = []; buildCampLevel();
     CAMP.t50 = [-8, -4, 0, 4, 8].map(x => new PopTarget(x, -44.6, { kind: 'man', y: terrainH(x, -44.6) + 0.35 }));
-    CAMP.t100 = [-6, -2, 2, 6].map(x => new PopTarget(x, -90.3, { kind: 'man', y: terrainH(x, -90.3) + 0.35 }));
+    CAMP.t100 = [-6, -2, 2, 6].map(x => new PopTarget(x, -90.3, { kind: 'man', y: terrainH(x, -90.3) + 0.35, w: 0.9, h: 1.35 }));
     CAMP.village = [[-46.2, -58.5, Math.PI / 2], [-31, -56.6, 0], [-28.5, -61.5, 0], [-42, -70.6, 0], [-44, -77.2, 0], [-30.8, -73.3, Math.PI / 2 * 0], [-26, -78.8, 0], [-40.5, -58, 0]].map(([x, z, ry]) => new PopTarget(x, z, { ry, kind: 'man', y: 0.4, h: 1.2 }));
     const npc = (o) => S.npc(o);
     npc({ name: 'Hollis', pos: [1.5, 0, 3.8], yaw: Math.PI * 0.9, model: { side: 'civ', jacket: MAT.khaki, pants: MAT.khaki, hat: 'campaign', hair: MAT.hairDark, skinI: 1, tie: MAT.usPants, gear: false } });
@@ -483,6 +484,7 @@ MISSIONS.push({
     },
     {
       async run(S) {
+        { const w = Player.cur(); if (w) { w.res = Math.max(w.res, 32); Player.updateHud(); } }
         S.hint('Hold <kbd>Right click</kbd> to aim down the sights — line up the front post inside the rear aperture', 8);
         let n = 0; CAMP.t100.forEach(t => { t.onHit = () => { n++; HUD.setObjective(`Aim down sights and hit the 100-yard targets (${n}/4)`); }; t.raise(); });
         HUD.setObjective('Aim down sights and hit the 100-yard targets (0/4)');

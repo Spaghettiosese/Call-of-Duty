@@ -28,6 +28,15 @@ function slingTube(points, mat, parent, flat = 2.6) {
   const m = new THREE.Mesh(g, mat); parent.add(m); return m;
 }
 
+/* hand orientation relative to the gun: palmDir = where the palm/fingers extend (hand -Y),
+   curlDir = where the fingers curl (hand -Z). Returns a gun-local quaternion. */
+function handBasis(palmDir, curlDir) {
+  const Y = V3(...palmDir).normalize().negate(), Zc = V3(...curlDir).normalize().negate();
+  const Z = Zc.addScaledVector(Y, -Zc.dot(Y)).normalize(), X = V3().crossVectors(Y, Z).normalize();
+  return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Y, Z));
+}
+const _hq = new THREE.Quaternion(), _fq = new THREE.Quaternion();
+function orientHand(arm, gunQ, local) { _hq.copy(gunQ).multiply(local); _fq.copy(arm.sh.quaternion).multiply(arm.el.quaternion).invert(); arm.hand.quaternion.copy(_fq).multiply(_hq); }
 /* ---------------- M1 Garand ---------------- */
 function buildGarand() {
   const g = new THREE.Group(), W = MAT.walnut, S = MAT.gunSteel, B = MAT.gunBlue, parts = {};
@@ -80,8 +89,9 @@ function buildGarand() {
   vbox(0.01, 0.012, 0.012, S, g, 0, -0.1, 0.25);
   return {
     id: 'garand', g, parts,
-    anchors: { gripR: V3(0.0, -0.012, 0.07), gripL: V3(0.0, -0.003, -0.3), sight: V3(0, 0.1, 0.03), muzzle: V3(0, 0.056, -0.8), eject: V3(0.0, 0.08, -0.09), clipSlot: V3(0, 0.03, -0.095) },
+    anchors: { gripR: V3(0.031, 0.034, 0.1), gripL: V3(-0.03, -0.036, -0.3), sight: V3(0, 0.1, 0.03), muzzle: V3(0, 0.056, -0.8), eject: V3(0.0, 0.08, -0.09), clipSlot: V3(0, 0.03, -0.095) },
     hip: V3(0.13, -0.15, -0.32), hipRot: V3(0, 0.035, 0), adsDist: 0.3,
+    handR: handBasis([0, -0.86, -0.5], [-1, 0, 0]), handL: handBasis([1, 0, 0], [0, 1, 0]),
   };
 }
 /* ---------------- Thompson M1A1 ---------------- */
@@ -111,8 +121,9 @@ function buildThompson() {
   slingTube([[0, -0.03, -0.35], [0, -0.1, -0.15], [0, -0.13, 0.15], [0, -0.1, 0.35]], MAT.slingWeb, g);
   return {
     id: 'thompson', g, parts,
-    anchors: { gripR: V3(0, -0.035, 0.045), gripL: V3(0, -0.02, -0.3), sight: V3(0, 0.098, 0.058), muzzle: V3(0, 0.05, -0.52), eject: V3(0.03, 0.06, -0.07), magSlot: V3(0, 0.0, -0.105) },
+    anchors: { gripR: V3(0.03, 0.012, 0.062), gripL: V3(-0.032, -0.05, -0.3), sight: V3(0, 0.098, 0.058), muzzle: V3(0, 0.05, -0.52), eject: V3(0.03, 0.06, -0.07), magSlot: V3(0, 0.0, -0.105) },
     hip: V3(0.125, -0.145, -0.29), hipRot: V3(0, 0.04, 0), adsDist: 0.27,
+    handR: handBasis([0, -0.95, -0.3], [-1, 0, 0]), handL: handBasis([1, 0, 0], [0, 1, 0]),
   };
 }
 /* ---------------- M1911 ---------------- */
@@ -134,8 +145,9 @@ function buildColt() {
   vbox(0.022, 0.11, 0.034, S, mag, 0, -0.055, 0); vbox(0.028, 0.008, 0.042, S, mag, 0, -0.112, 0.004);
   return {
     id: 'colt', g, parts,
-    anchors: { gripR: V3(0, -0.035, 0.048), gripL: V3(-0.018, -0.05, 0.03), sight: V3(0, 0.071, 0.022), muzzle: V3(0, 0.048, -0.19), eject: V3(0.015, 0.066, -0.03), magSlot: V3(0, -0.004, 0.03) },
+    anchors: { gripR: V3(0.029, 0.01, 0.068), gripL: V3(-0.032, -0.02, 0.062), sight: V3(0, 0.071, 0.022), muzzle: V3(0, 0.048, -0.19), eject: V3(0.015, 0.066, -0.03), magSlot: V3(0, -0.004, 0.03) },
     hip: V3(0.1, -0.12, -0.32), hipRot: V3(0, 0.05, 0), adsDist: 0.3,
+    handR: handBasis([0, -0.95, -0.3], [-1, 0, 0]), handL: handBasis([0, -0.9, -0.4], [1, 0, 0]),
   };
 }
 function buildGrenadeModel() {
@@ -160,7 +172,7 @@ function buildFPArm(side) {
   const wrist = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.03, 0.05, 10), MAT.skins[0]); wrist.position.y = -VM_LF - 0.01; el.add(wrist);
   const hand = new THREE.Group(); hand.position.y = -VM_LF - 0.03; el.add(hand);
   const skin = MAT.skins[0];
-  const palm = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), skin); palm.scale.set(0.043, 0.05, 0.019); palm.position.y = -0.045; hand.add(palm);
+  const palm = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), skin); palm.scale.set(0.04, 0.048, 0.023); palm.position.y = -0.045; hand.add(palm);
   const seg = (len, r) => { const g = new THREE.CylinderGeometry(r, r * 0.92, len, 8); g.translate(0, -len / 2, 0); return g; };
   const tip = new THREE.SphereGeometry(1, 8, 6);
   for (let i = 0; i < 4; i++) {
@@ -177,14 +189,13 @@ function buildFPArm(side) {
   const t1 = new THREE.Mesh(seg(0.034, 0.011), skin); th.add(t1);
   const tk = new THREE.Group(); tk.position.y = -0.034; th.add(tk);
   const t2 = new THREE.Mesh(seg(0.028, 0.0098), skin); tk.add(t2); const tt = new THREE.Mesh(tip, skin); tt.scale.setScalar(0.0095); tt.position.y = -0.028; tk.add(tt);
-  th.rotation.set(0.7, 0, 0.75 * side); tk.rotation.x = 0.5;
-  hand.rotation.y = side > 0 ? -1.3 : 1.4;
+  th.rotation.set(side > 0 ? 0.7 : 1.1, 0, 0.75 * side); tk.rotation.x = side > 0 ? 0.5 : 0.25;
   sh.traverse(m => { if (m.isMesh) { m.castShadow = false; m.receiveShadow = false; } });
   return { sh, el, hand };
 }
 const _vik = { d: V3(), p: V3(), e: V3(), u: V3(), l: V3(), q1: new THREE.Quaternion(), q2: new THREE.Quaternion(), down: V3(0, -1, 0) };
 function solveFPArm(arm, target, pole) {
-  const S = arm.sh.position, K = _vik, L1 = VM_LU, L2 = VM_LF + 0.075;
+  const S = arm.sh.position, K = _vik, L1 = VM_LU, L2 = VM_LF + 0.03;
   K.d.copy(target).sub(S); let len = K.d.length(); const max = (L1 + L2) * 0.999; if (len > max) { K.d.multiplyScalar(max / len); len = max; }
   const dir = K.d.clone().divideScalar(len);
   const a = (L1 * L1 - L2 * L2 + len * len) / (2 * len), hh = Math.sqrt(Math.max(0, L1 * L1 - a * a));
@@ -483,6 +494,9 @@ const VM = {
     this.nade.visible = this.nadeVisible;
     solveFPArm(this.arms.R, rT, V3(0.6, -0.9, 0.3).normalize());
     solveFPArm(this.arms.L, lT, V3(-0.8, -0.8, 0.2).normalize());
+    const nadeR = this.nadeVisible || (this.anim && this.anim.nade && this.animT > 0.1 && this.animT < 0.8);
+    if (!nadeR) orientHand(this.arms.R, this.pivot.quaternion, W.handR); else this.arms.R.hand.quaternion.identity();
+    orientHand(this.arms.L, this.pivot.quaternion, W.handL);
     // muzzle flash
     this.flashT -= dt;
     if (this.flashT > 0) { const m = toRoot(anc.muzzle); this.flash.position.copy(m); this.flash.quaternion.setFromEuler(new THREE.Euler(rx, ry, rz, 'YXZ')); this.flash.rotateZ(Math.random() * TAU); this.flash.visible = true; R.vmFill.intensity = 2.2; R.vmFill.position.copy(this.root.localToWorld(m.clone())); }
