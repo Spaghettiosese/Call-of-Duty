@@ -74,8 +74,12 @@ function requestLockSafe(gesture = false) {
   if (Input.lockFailed) return;
   if (!Input.locked) { Game.needClick = true; $('clickPlay').textContent = 'Click to continue'; $('clickPlay').hidden = false; requestLock(gesture); }
 }
+function onLockRefused() {
+  if (Game.state !== 'play') return;
+  Game.needClick = true; $('clickPlay').textContent = 'Click to resume'; $('clickPlay').hidden = false;
+}
 function onPointerLockChange(locked) {
-  if (locked) { Game.needClick = false; $('clickPlay').hidden = true; return; }
+  if (locked) { Input.lockFails = 0; Game.needClick = false; $('clickPlay').hidden = true; return; }
   if (Game.state === 'play' && !Game.needClick) Game.pause(true);
 }
 function bindSettings() {

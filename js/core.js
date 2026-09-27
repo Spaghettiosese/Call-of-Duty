@@ -118,13 +118,21 @@ const Input = {
     Input.locked = document.pointerLockElement === document.getElementById('game');
     if (typeof onPointerLockChange === 'function') onPointerLockChange(Input.locked);
   });
-  document.addEventListener('pointerlockerror', () => { if (Input.reqGesture) Input.lockFailed = true; });
+  document.addEventListener('pointerlockerror', () => lockRefused());
 })();
+/* A refused capture is usually temporary (Chrome blocks re-capture for ~1s after Esc).
+   Ask for another click; only give up on capture after repeated refusals of real clicks. */
+function lockRefused() {
+  if (Input.locked) return;
+  if (Input.reqGesture) { Input.lockFails = (Input.lockFails || 0) + 1; if (Input.lockFails >= 4) { Input.lockFailed = true; return; } }
+  if (typeof onLockRefused === 'function') onLockRefused();
+}
 function requestLock(gesture = false) {
   const c = document.getElementById('game'); Input.reqGesture = gesture;
   if (!c.requestPointerLock) { Input.lockFailed = true; return; }
+  if (Input.locked) return;
   try {
     const p = c.requestPointerLock();
-    if (p && p.catch) p.catch(() => { if (gesture) Input.lockFailed = true; });
-  } catch (e) { if (gesture) Input.lockFailed = true; }
+    if (p && p.catch) p.catch(() => lockRefused());
+  } catch (e) { lockRefused(); }
 }
